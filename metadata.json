@@ -1,0 +1,6 @@
+{
+  "name": "OLADIZZ - A Modern Shopify-style Store",
+  "description": "A Shopify-style e-commerce storefront powered by React and Gemini. Features a hero section, featured products, AI-generated product imagery, and a clean, responsive UI with premium fonts.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
