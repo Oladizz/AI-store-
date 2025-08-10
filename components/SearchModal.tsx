@@ -8,7 +8,7 @@ interface SearchModalProps {
     isOpen: boolean;
     onClose: () => void;
     allProducts: Product[];
-    onProductSelect: (productId: string) => void;
+    onProductSelect: (product: Product) => void;
     currency: Currency;
 }
 
@@ -110,7 +110,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose, allProducts,
                                     <li key={product.id}>
                                         <a 
                                             href={`/product/${product.id}`}
-                                            onClick={(e) => { e.preventDefault(); onProductSelect(product.id); }}
+                                            onClick={(e) => { e.preventDefault(); onProductSelect(product); }}
                                             className="flex items-center p-4 hover:bg-slate-50 transition-colors"
                                         >
                                             <img src={product.imageUrl} alt={product.name} className="h-16 w-16 rounded-md object-cover flex-shrink-0 bg-slate-200" />

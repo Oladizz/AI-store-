@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { XMarkIcon } from './icons';
 import { AuthModalView } from '../types';
@@ -9,7 +8,7 @@ interface AuthModalProps {
     view: AuthModalView;
     setView: (view: AuthModalView) => void;
     onLogin: (email: string, password_do_not_use: string) => Promise<boolean>;
-    onSignup: (name: string, email: string, password_do_not_use: string) => Promise<boolean>;
+    onSignup: (name: string, email: string, password: string) => Promise<boolean>;
 }
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, view, setView, onLogin, onSignup }) => {
@@ -70,7 +69,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, view, setView, o
                         <input type="email" name="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
                     </div>
                      <div>
-                        <label htmlFor="password" aria-label="Password (for demonstration purposes only)" className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                        <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                         <input type="password" name="password" id="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
                     </div>
                     {error && <p className="text-sm text-red-600">{error}</p>}

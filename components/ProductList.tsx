@@ -6,7 +6,7 @@ import ProductCard from './ProductCard';
 interface ProductListProps {
   products: Product[];
   onAddToCart: (product: Product) => void;
-  onProductSelect: (productId: string) => void;
+  onProductSelect: (product: Product) => void;
   isAdmin: boolean;
   onEditProduct: (product: Product) => void;
   currency: Currency;

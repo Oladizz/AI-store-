@@ -6,7 +6,7 @@ import { PencilSquareIcon } from './icons';
 interface ProductCardProps {
   product: Product;
   onAddToCart: (product: Product) => void;
-  onProductSelect: (productId: string) => void;
+  onProductSelect: (product: Product) => void;
   isAdmin: boolean;
   onEdit: (product: Product) => void;
   currency: Currency;
@@ -22,7 +22,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart, onProdu
   const handleCardClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     if (isAdmin) return; // Prevent navigation in admin mode
-    onProductSelect(product.id);
+    onProductSelect(product);
   }
 
   const handleEditClick = (e: React.MouseEvent<HTMLButtonElement>) => {

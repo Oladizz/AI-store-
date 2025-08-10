@@ -16,7 +16,7 @@ interface StyleAdvisorProps {
   categories: string[];
   currentUser: User | null;
   onAddToCart: (product: Product) => void;
-  onProductSelect: (productId: string) => void;
+  onProductSelect: (product: Product) => void;
   isAdmin: boolean;
   onEnterAdminMode: () => void;
   onCreateProduct: (prompt: string) => Promise<Product | null>;
@@ -320,7 +320,7 @@ Available categories for new products: ${categories.join(', ')}.
                   <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
                     {message.recommendedProducts.map(product => (
                       <div key={product.id} className="flex items-center gap-3 text-left">
-                        <button onClick={() => { onProductSelect(product.id); onClose(); }} className="flex items-center gap-3 text-left w-full hover:bg-slate-100 p-2 rounded-lg transition-colors">
+                        <button onClick={() => { onProductSelect(product); onClose(); }} className="flex items-center gap-3 text-left w-full hover:bg-slate-100 p-2 rounded-lg transition-colors">
                             <img src={product.imageUrl} alt={product.name} className="h-12 w-12 rounded-md object-cover flex-shrink-0 bg-slate-100" />
                             <div className="flex-1"><p className="text-xs font-bold">{product.name}</p><p className="text-xs text-slate-500">${product.price.toFixed(2)}</p></div>
                         </button>

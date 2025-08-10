@@ -2,6 +2,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Product, CartItem, PageSection, PageContent, EditableProduct, User, CheckoutInfo, AuthModalView, Currency, Order } from './types';
 import { fetchProducts, generateSingleProduct, fetchForYouProductIds } from './services/geminiService';
+import { auth, db } from './services/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import Header from './components/Header';
 import ShoppingCart from './components/ShoppingCart';
 import Footer from './Footer';
@@ -106,6 +109,7 @@ const App: React.FC = () => {
 
     // Routing State
     const [activePath, setActivePath] = useState(window.location.pathname);
+    const [clickedProduct, setClickedProduct] = useState<Product | null>(null);
     const activeProductId = useMemo(() => activePath.match(/^\/product\/([\w-]+)/)?.[1] || null, [activePath]);
 
     // Admin State
@@ -116,14 +120,40 @@ const App: React.FC = () => {
     const [generateImagesOnLoad, setGenerateImagesOnLoad] = useLocalStorage<boolean>('generateImagesOnLoad', false);
     
     // Auth & Analytics State
-    const [users, setUsers] = useLocalStorage<User[]>('users', []);
-    const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [orders, setOrders] = useLocalStorage<Order[]>('orders', []);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [authModalView, setAuthModalView] = useState<AuthModalView>('login');
 
     // Checkout State
     const [checkoutInfo, setCheckoutInfo] = useState<CheckoutInfo>(initialCheckoutInfo);
+
+    // Auth State Effect
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const userDocRef = doc(db, "users", user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    setCurrentUser(userDocSnap.data() as User);
+                } else {
+                    // This case might happen if user exists in Auth but not Firestore.
+                    // We'll create a basic user object.
+                    setCurrentUser({
+                        id: user.uid,
+                        email: user.email || '',
+                        name: user.displayName || 'User',
+                        createdAt: user.metadata.creationTime || new Date().toISOString(),
+                    });
+                }
+            } else {
+                setCurrentUser(null);
+            }
+            setIsAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Routing Effect
     useEffect(() => {
@@ -144,6 +174,11 @@ const App: React.FC = () => {
             window.scrollTo(0, 0);
         }
     }, []);
+
+    const handleProductSelect = (product: Product) => {
+        setClickedProduct(product);
+        handleNavigate(`/product/${product.id}`);
+    };
     
     const sortedLayout = useMemo(() => [...pageLayout].sort((a,b) => a.order - b.order), [pageLayout]);
 
@@ -159,6 +194,13 @@ const App: React.FC = () => {
             return () => clearTimeout(timer);
         }
     }, [scrollToSection, activePath, sortedLayout]);
+
+    useEffect(() => {
+        // When we navigate away from a product page, clear the clicked product state
+        if (!activeProductId) {
+            setClickedProduct(null);
+        }
+    }, [activeProductId]);
 
     // Data Loading
     const loadProducts = useCallback(async () => {
@@ -204,8 +246,13 @@ const App: React.FC = () => {
 
     const activeProduct = useMemo(() => {
         if (!activeProductId) return null;
+        // Prioritize the just-clicked product to prevent race conditions on reload
+        if (clickedProduct && clickedProduct.id === activeProductId) {
+            return clickedProduct;
+        }
+        // Otherwise, find the product in the main lists
         return products.find(p => p.id === activeProductId) || forYouProducts.find(p => p.id === activeProductId) || null;
-    }, [activeProductId, products, forYouProducts]);
+    }, [activeProductId, products, forYouProducts, clickedProduct]);
 
     // Cart handlers
     const addToCart = (productToAdd: Product) => {
@@ -277,28 +324,46 @@ const App: React.FC = () => {
     };
 
     // Auth Handlers
-    const handleLogin = async (email: string): Promise<boolean> => {
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (user) {
-            setCurrentUser(user);
+    const handleLogin = async (email: string, password: string): Promise<boolean> => {
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
             setIsAuthModalOpen(false);
             return true;
+        } catch (error) {
+            console.error("Firebase Login Error:", error);
+            return false;
         }
-        return false;
     };
 
-    const handleSignup = async (name: string, email: string): Promise<boolean> => {
-        if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) return false;
-        const newUser: User = { id: `user-${Date.now()}`, name, email: email.toLowerCase(), createdAt: new Date().toISOString() };
-        setUsers(prev => [...prev, newUser]);
-        setCurrentUser(newUser);
-        setIsAuthModalOpen(false);
-        return true;
+    const handleSignup = async (name: string, email: string, password: string): Promise<boolean> => {
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // Create user profile in Firestore
+            const newUser: User = {
+                id: user.uid,
+                name,
+                email: user.email || '',
+                createdAt: new Date().toISOString(),
+            };
+            await setDoc(doc(db, "users", user.uid), newUser);
+
+            setIsAuthModalOpen(false);
+            return true;
+        } catch (error) {
+            console.error("Firebase Signup Error:", error);
+            return false;
+        }
     };
 
-    const handleLogout = () => {
-        setCurrentUser(null);
-        if (activePath === '/checkout' || activePath === '/admin/dashboard') handleNavigate('/');
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            if (activePath === '/checkout' || activePath === '/admin/dashboard') handleNavigate('/');
+        } catch (error) {
+            console.error("Firebase Logout Error:", error);
+        }
     };
 
     const handleAuthRequest = (view: AuthModalView) => {
@@ -343,7 +408,7 @@ const App: React.FC = () => {
 
     const handleNavigateToDashboard = () => handleNavigate('/admin/dashboard');
 
-    if (isLoading && products.length === 0) return <div className="h-screen flex items-center justify-center text-xl font-semibold">Loading Store...</div>;
+    if (isAuthLoading || (isLoading && products.length === 0)) return <div className="h-screen flex items-center justify-center text-xl font-semibold">Loading Store...</div>;
     if (error) return <div className="h-screen flex items-center justify-center text-xl text-red-500 p-8 text-center">{error}</div>;
 
     const renderHomePage = () => (
@@ -355,10 +420,10 @@ const App: React.FC = () => {
                         case 'HorizontalProductSection':
                             let hProducts = section.id === 'for-you' ? forYouProducts : (section.productSlice ? products.slice(section.productSlice[0], section.productSlice[1]) : []);
                             if(section.id === 'for-you' && hProducts.length === 0) return null;
-                            return <HorizontalProductSection id={section.id} title={section.content.title} description={section.content.description} products={hProducts} onAddToCart={addToCart} onProductSelect={(id) => handleNavigate(`/product/${id}`)} isAdmin={isAdminMode} onEditProduct={openEditProductModal} onContentChange={(field, value) => handleSectionContentChange(section.id, field, value)} currency={currency}/>;
+                            return <HorizontalProductSection id={section.id} title={section.content.title} description={section.content.description} products={hProducts} onAddToCart={addToCart} onProductSelect={handleProductSelect} isAdmin={isAdminMode} onEditProduct={openEditProductModal} onContentChange={(field, value) => handleSectionContentChange(section.id, field, value)} currency={currency}/>;
                         case 'VerticalProductSection':
                             const vProducts = section.productSlice ? products.slice(section.productSlice[0], section.productSlice[1]) : [];
-                            return <VerticalProductSection id={section.id} title={section.content.title} description={section.content.description} products={vProducts} onAddToCart={addToCart} onProductSelect={(id) => handleNavigate(`/product/${id}`)} isAdmin={isAdminMode} onEditProduct={openEditProductModal} onContentChange={(field, value) => handleSectionContentChange(section.id, field, value)} currency={currency}/>;
+                            return <VerticalProductSection id={section.id} title={section.content.title} description={section.content.description} products={vProducts} onAddToCart={addToCart} onProductSelect={handleProductSelect} isAdmin={isAdminMode} onEditProduct={openEditProductModal} onContentChange={(field, value) => handleSectionContentChange(section.id, field, value)} currency={currency}/>;
                         case 'AboutUs': return <AboutUs content={pageContent.about} isAdmin={isAdminMode} onContentChange={(field, value) => handlePageContentChange('about', field, value)} />;
                         case 'OurCommitment': return <OurCommitment content={pageContent.commitment} isAdmin={isAdminMode} onContentChange={(field, value) => handlePageContentChange('commitment', field, value)} />;
                         case 'WhyChooseUs': return <WhyChooseUs content={pageContent.whyChooseUs} isAdmin={isAdminMode} onContentChange={(field, value) => setPageContent(p => ({...p, whyChooseUs: {...p.whyChooseUs, [field as 'title' | 'description']: value as any}}))} />;
@@ -388,7 +453,7 @@ const App: React.FC = () => {
             return <AdminDashboard onNavigate={handleNavigate} users={users} orders={orders} currency={currency} />;
         }
         if (activeProduct) {
-            return <ProductPage product={activeProduct} onAddToCart={addToCart} onBack={() => handleNavigate('/')} currency={currency} allProducts={products} onProductSelect={(id) => handleNavigate(`/product/${id}`)} />;
+            return <ProductPage product={activeProduct} onAddToCart={addToCart} onBack={() => handleNavigate('/')} currency={currency} allProducts={products} onProductSelect={handleProductSelect} />;
         }
         return renderHomePage();
     };
@@ -404,8 +469,8 @@ const App: React.FC = () => {
             {activePath !== '/admin/dashboard' && <Footer onNavigate={handleNavigate} />}
             
             <ShoppingCart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cart} onUpdateQuantity={updateCartQuantity} onRemoveItem={removeFromCart} total={cartTotal} onCheckout={handleCheckout} currency={currency} />
-            <StyleAdvisor isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} context={assistantContext} products={products} categories={categories} currentUser={currentUser} onAddToCart={addToCart} onProductSelect={(id) => {handleNavigate(`/product/${id}`); setIsAssistantOpen(false);}} isAdmin={isAdminMode} onEnterAdminMode={() => setIsAdminMode(true)} onCreateProduct={handleCreateProductFromAI} onAuthRequest={(view) => {setIsAssistantOpen(false); handleAuthRequest(view);}} onCheckoutRequest={() => {setIsAssistantOpen(false); handleCheckout();}} onCheckoutInfoUpdate={(info) => setCheckoutInfo(prev => ({...prev, shipping: info}))} orders={orders}/>
-            <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} allProducts={products} onProductSelect={(id) => {handleNavigate(`/product/${id}`); setIsSearchOpen(false);}} currency={currency}/>
+            <StyleAdvisor isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} context={assistantContext} products={products} categories={categories} currentUser={currentUser} onAddToCart={addToCart} onProductSelect={(product) => {handleProductSelect(product); setIsAssistantOpen(false);}} isAdmin={isAdminMode} onEnterAdminMode={() => setIsAdminMode(true)} onCreateProduct={handleCreateProductFromAI} onAuthRequest={(view) => {setIsAssistantOpen(false); handleAuthRequest(view);}} onCheckoutRequest={() => {setIsAssistantOpen(false); handleCheckout();}} onCheckoutInfoUpdate={(info) => setCheckoutInfo(prev => ({...prev, shipping: info}))} orders={orders}/>
+            <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} allProducts={products} onProductSelect={(product) => {handleProductSelect(product); setIsSearchOpen(false);}} currency={currency}/>
             
             {!isAdminMode && <StyleAdvisorButton onClick={() => { setAssistantContext('default'); setIsAssistantOpen(true); }} />}
             

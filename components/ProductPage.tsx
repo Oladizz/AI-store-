@@ -11,7 +11,7 @@ interface ProductPageProps {
   onBack: () => void;
   currency: Currency;
   allProducts: Product[];
-  onProductSelect: (productId: string) => void;
+  onProductSelect: (product: Product) => void;
 }
 
 const AccordionItem: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = false }) => {
