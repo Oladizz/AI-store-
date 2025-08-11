@@ -4,7 +4,7 @@ import { Product, CartItem, PageSection, PageContent, EditableProduct, User, Che
 import { fetchProducts, generateSingleProduct, fetchForYouProductIds } from './services/geminiService';
 import { auth, db } from './services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs } from "firebase/firestore";
 import Header from './components/Header';
 import ShoppingCart from './components/ShoppingCart';
 import Footer from './Footer';
@@ -122,6 +122,7 @@ const App: React.FC = () => {
     // Auth & Analytics State
     const [isAuthLoading, setIsAuthLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [users, setUsers] = useState<User[]>([]);
     const [orders, setOrders] = useLocalStorage<Order[]>('orders', []);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [authModalView, setAuthModalView] = useState<AuthModalView>('login');
@@ -154,6 +155,18 @@ const App: React.FC = () => {
         });
         return () => unsubscribe();
     }, []);
+
+    useEffect(() => {
+        const fetchUsers = async () => {
+            if (isAdminMode) {
+                const usersCollectionRef = collection(db, "users");
+                const usersSnapshot = await getDocs(usersCollectionRef);
+                const usersList = usersSnapshot.docs.map(doc => doc.data() as User);
+                setUsers(usersList);
+            }
+        };
+        fetchUsers();
+    }, [isAdminMode]);
 
     // Routing Effect
     useEffect(() => {
