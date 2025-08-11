@@ -390,6 +390,51 @@ const App: React.FC = () => {
         else { handleNavigate('/checkout'); setIsCartOpen(false); }
     };
 
+    const handlePayWithCrypto = async () => {
+        const chargeData = {
+            name: 'Oladizz Store Purchase',
+            description: `Order from ${currentUser?.name || 'customer'}.`,
+            pricing_type: 'fixed_price',
+            local_price: {
+                amount: (cartTotal + 5.99).toFixed(2),
+                currency: currency.code,
+            },
+            redirect_url: window.location.origin, // Redirect back to the store after payment
+            cancel_url: window.location.href, // Return to checkout on cancel
+        };
+
+        try {
+            const response = await fetch('https://api.commerce.coinbase.com/charges/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Note: In a real app, this key should be handled on a server for security.
+                    // The .env file is not accessible client-side in Vite by default.
+                    // We will use a placeholder and assume a server proxy would handle this.
+                    'X-CC-Api-Key': 'd3a2b1c0-a9b8-c7d6-e5f4-a3b2c1d0e9f8', // Placeholder key
+                },
+                body: JSON.stringify(chargeData),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Coinbase API responded with status: ${response.status}`);
+            }
+
+            const responseData = await response.json();
+
+            if (responseData.data && responseData.data.hosted_url) {
+                // Redirect user to the Coinbase payment page
+                window.location.href = responseData.data.hosted_url;
+            } else {
+                throw new Error('Could not retrieve hosted_url from Coinbase.');
+            }
+
+        } catch (error) {
+            console.error('Error creating Coinbase charge:', error);
+            alert('Could not initiate cryptocurrency payment. Please try again or use another payment method.');
+        }
+    };
+
     const handlePlaceOrder = () => {
         if (!currentUser) return;
         const newOrder: Order = {
@@ -456,7 +501,7 @@ const App: React.FC = () => {
                 handleNavigate('/'); 
                 return null;
             }
-            return <CheckoutPage cartItems={cart} total={cartTotal} currentUser={currentUser} checkoutInfo={checkoutInfo} onCheckoutInfoChange={setCheckoutInfo} onPlaceOrder={handlePlaceOrder} onBackToCart={() => setIsCartOpen(true)} onOpenAssistant={() => { setAssistantContext('checkout'); setIsAssistantOpen(true); }} currency={currency} />;
+            return <CheckoutPage cartItems={cart} total={cartTotal} currentUser={currentUser} checkoutInfo={checkoutInfo} onCheckoutInfoChange={setCheckoutInfo} onPlaceOrder={handlePlaceOrder} onPayWithCrypto={handlePayWithCrypto} onBackToCart={() => setIsCartOpen(true)} onOpenAssistant={() => { setAssistantContext('checkout'); setIsAssistantOpen(true); }} currency={currency} />;
         }
         if (activePath === '/admin/dashboard') {
              if (!isAdminMode) { 

@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read/write their own profile
+    match /users/{userId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+
+    // All users can read products, but only admins can write them.
+    // Note: This 'write' rule assumes you have a way to set a custom 'admin' claim on a user's token.
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth.token.admin == true;
+    }
+
+    // Users can create their own orders, and can only read/update their own.
+    match /orders/{orderId} {
+      allow create: if request.auth.uid == request.resource.data.userId;
+      allow read, update: if request.auth.uid == resource.data.userId;
+    }
+  }
+}

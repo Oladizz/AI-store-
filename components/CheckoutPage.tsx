@@ -10,12 +10,13 @@ interface CheckoutPageProps {
     checkoutInfo: CheckoutInfo;
     onCheckoutInfoChange: React.Dispatch<React.SetStateAction<CheckoutInfo>>;
     onPlaceOrder: () => void;
+    onPayWithCrypto: () => void;
     onBackToCart: () => void;
     onOpenAssistant: () => void;
     currency: Currency;
 }
 
-const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUser, checkoutInfo, onCheckoutInfoChange, onPlaceOrder, onBackToCart, onOpenAssistant, currency }) => {
+const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUser, checkoutInfo, onCheckoutInfoChange, onPlaceOrder, onPayWithCrypto, onBackToCart, onOpenAssistant, currency }) => {
     
     const handleShippingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onCheckoutInfoChange(prev => ({ ...prev, shipping: { ...prev.shipping, [e.target.name]: e.target.value } }));
@@ -141,11 +142,29 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUs
                                     <p>{currency.symbol}{(total + 5.99).toFixed(2)}</p>
                                 </div>
                             </div>
-                            <div className="mt-6">
+                            <div className="mt-6 space-y-4">
                                 <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 px-8 rounded-md hover:bg-indigo-700 transition-colors">
-                                    Place Order
+                                    Place Order (Credit Card)
                                 </button>
-                                <button type="button" onClick={onBackToCart} className="mt-2 w-full text-center text-sm font-semibold text-indigo-600 hover:text-indigo-500">
+
+                                <div className="relative">
+                                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                        <div className="w-full border-t border-slate-300" />
+                                    </div>
+                                    <div className="relative flex justify-center">
+                                        <span className="bg-white px-2 text-sm text-slate-500">OR</span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={onPayWithCrypto}
+                                    className="w-full bg-blue-600 text-white font-bold py-3 px-8 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <span>Pay with Crypto</span>
+                                </button>
+
+                                <button type="button" onClick={onBackToCart} className="w-full text-center text-sm font-semibold text-indigo-600 hover:text-indigo-500">
                                     &larr; Back to Cart
                                 </button>
                             </div>
