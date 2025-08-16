@@ -44,6 +44,7 @@ export interface Order {
     status: 'Processing' | 'Shipped' | 'Out for Delivery' | 'Delivered';
     shippingAddress: CheckoutInfo['shipping'];
     trackingNumber?: string;
+    coinbaseChargeId?: string | null;
 }
 
 export interface CheckoutInfo {

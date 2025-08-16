@@ -2,6 +2,8 @@
 import React from 'react';
 import { CartItem, User, CheckoutInfo, Currency } from '../types';
 import { SparklesIcon } from './icons';
+import { Checkout, CheckoutButton, CheckoutStatus, LifecycleStatus } from '@coinbase/onchainkit/checkout';
+import { createCoinbaseCharge } from '../services/coinbaseService';
 
 interface CheckoutPageProps {
     cartItems: CartItem[];
@@ -13,21 +15,27 @@ interface CheckoutPageProps {
     onBackToCart: () => void;
     onOpenAssistant: () => void;
     currency: Currency;
+    setCoinbaseChargeId: (id: string | null) => void;
 }
 
-const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUser, checkoutInfo, onCheckoutInfoChange, onPlaceOrder, onBackToCart, onOpenAssistant, currency }) => {
-    
+const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUser, checkoutInfo, onCheckoutInfoChange, onPlaceOrder, onBackToCart, onOpenAssistant, currency, setCoinbaseChargeId }) => {
+
     const handleShippingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onCheckoutInfoChange(prev => ({ ...prev, shipping: { ...prev.shipping, [e.target.name]: e.target.value } }));
     };
 
-    const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onCheckoutInfoChange(prev => ({ ...prev, payment: { ...prev.payment, [e.target.name]: e.target.value } }));
+    const chargeHandler = async () => {
+        const chargeId = await createCoinbaseCharge(cartItems, total, currency);
+        if (chargeId) {
+            setCoinbaseChargeId(chargeId);
+        }
+        return chargeId;
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onPlaceOrder();
+    const statusHandler = (status: LifecycleStatus) => {
+        if (status.statusName === 'success') {
+            onPlaceOrder();
+        }
     };
 
     if (cartItems.length === 0) {
@@ -47,7 +55,7 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUs
                      <p className="mt-3 text-lg text-slate-600">Welcome, {currentUser.name}. Let's get your order placed.</p>
                 </div>
                 
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                     {/* Shipping & Payment Details */}
                     <div className="lg:col-span-2 space-y-12">
                         <div>
@@ -93,20 +101,10 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUs
                         <div>
                             <h2 className="text-2xl font-semibold font-serif text-slate-800 mb-4">Payment Details</h2>
                             <div className="grid grid-cols-1 gap-6 bg-white p-6 rounded-lg shadow-sm">
-                                <div>
-                                    <label htmlFor="cardNumber" className="block text-sm font-medium text-slate-700">Card Number</label>
-                                    <input type="text" name="cardNumber" id="cardNumber" placeholder="xxxx xxxx xxxx xxxx" value={checkoutInfo.payment.cardNumber} onChange={handlePaymentChange} required className="mt-1 block w-full border-slate-300 rounded-md shadow-sm" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-6">
-                                     <div>
-                                        <label htmlFor="expiryDate" className="block text-sm font-medium text-slate-700">Expiry Date</label>
-                                        <input type="text" name="expiryDate" id="expiryDate" placeholder="MM/YY" value={checkoutInfo.payment.expiryDate} onChange={handlePaymentChange} required className="mt-1 block w-full border-slate-300 rounded-md shadow-sm" />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="cvc" className="block text-sm font-medium text-slate-700">CVC</label>
-                                        <input type="text" name="cvc" id="cvc" placeholder="123" value={checkoutInfo.payment.cvc} onChange={handlePaymentChange} required className="mt-1 block w-full border-slate-300 rounded-md shadow-sm" />
-                                    </div>
-                                </div>
+                                <Checkout chargeHandler={chargeHandler} onStatus={statusHandler}>
+                                    <CheckoutButton className="w-full bg-indigo-600 text-white font-bold py-3 px-8 rounded-md hover:bg-indigo-700 transition-colors" />
+                                    <CheckoutStatus />
+                                </Checkout>
                             </div>
                         </div>
                     </div>
@@ -142,16 +140,13 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, total, currentUs
                                 </div>
                             </div>
                             <div className="mt-6">
-                                <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 px-8 rounded-md hover:bg-indigo-700 transition-colors">
-                                    Place Order
-                                </button>
                                 <button type="button" onClick={onBackToCart} className="mt-2 w-full text-center text-sm font-semibold text-indigo-600 hover:text-indigo-500">
                                     &larr; Back to Cart
                                 </button>
                             </div>
                         </div>
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     );

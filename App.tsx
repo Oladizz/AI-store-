@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { OnchainKitProvider } from '@coinbase/onchainkit';
+import { base } from 'wagmi/chains';
 import { Product, CartItem, PageSection, PageContent, EditableProduct, User, CheckoutInfo, AuthModalView, Currency, Order } from './types';
 import { fetchProducts, generateSingleProduct, fetchForYouProductIds } from './services/geminiService';
 import Header from './components/Header';
@@ -124,6 +126,7 @@ const App: React.FC = () => {
 
     // Checkout State
     const [checkoutInfo, setCheckoutInfo] = useState<CheckoutInfo>(initialCheckoutInfo);
+    const [coinbaseChargeId, setCoinbaseChargeId] = useState<string | null>(null);
 
     // Routing Effect
     useEffect(() => {
@@ -325,10 +328,12 @@ const App: React.FC = () => {
             status: 'Processing',
             shippingAddress: checkoutInfo.shipping,
             trackingNumber: `1Z${Date.now().toString().slice(-10)}`,
+            coinbaseChargeId: coinbaseChargeId,
         };
         setOrders(prev => [...prev, newOrder]);
         setCart([]);
         setCheckoutInfo(initialCheckoutInfo);
+        setCoinbaseChargeId(null);
         alert('Thank you for your order!');
         handleNavigate('/');
     };
@@ -374,11 +379,11 @@ const App: React.FC = () => {
 
     const renderPageContent = () => {
         if (activePath === '/checkout') {
-            if (!currentUser) { 
-                handleNavigate('/'); 
+            if (!currentUser) {
+                handleNavigate('/');
                 return null;
             }
-            return <CheckoutPage cartItems={cart} total={cartTotal} currentUser={currentUser} checkoutInfo={checkoutInfo} onCheckoutInfoChange={setCheckoutInfo} onPlaceOrder={handlePlaceOrder} onBackToCart={() => setIsCartOpen(true)} onOpenAssistant={() => { setAssistantContext('checkout'); setIsAssistantOpen(true); }} currency={currency} />;
+            return <CheckoutPage cartItems={cart} total={cartTotal} currentUser={currentUser} checkoutInfo={checkoutInfo} onCheckoutInfoChange={setCheckoutInfo} onPlaceOrder={handlePlaceOrder} onBackToCart={() => setIsCartOpen(true)} onOpenAssistant={() => { setAssistantContext('checkout'); setIsAssistantOpen(true); }} currency={currency} setCoinbaseChargeId={setCoinbaseChargeId} />;
         }
         if (activePath === '/admin/dashboard') {
              if (!isAdminMode) { 
@@ -394,27 +399,38 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="relative">
-            {activePath !== '/admin/dashboard' && <Header cartItemCount={cartItemCount} onCartClick={() => setIsCartOpen(true)} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} onAuthClick={handleAuthRequest} onSearchClick={() => setIsSearchOpen(true)} />}
-            
-            <main>
-                {renderPageContent()}
-            </main>
-            
-            {activePath !== '/admin/dashboard' && <Footer onNavigate={handleNavigate} />}
-            
-            <ShoppingCart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cart} onUpdateQuantity={updateCartQuantity} onRemoveItem={removeFromCart} total={cartTotal} onCheckout={handleCheckout} currency={currency} />
-            <StyleAdvisor isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} context={assistantContext} products={products} categories={categories} currentUser={currentUser} onAddToCart={addToCart} onProductSelect={(id) => {handleNavigate(`/product/${id}`); setIsAssistantOpen(false);}} isAdmin={isAdminMode} onEnterAdminMode={() => setIsAdminMode(true)} onCreateProduct={handleCreateProductFromAI} onAuthRequest={(view) => {setIsAssistantOpen(false); handleAuthRequest(view);}} onCheckoutRequest={() => {setIsAssistantOpen(false); handleCheckout();}} onCheckoutInfoUpdate={(info) => setCheckoutInfo(prev => ({...prev, shipping: info}))} orders={orders}/>
-            <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} allProducts={products} onProductSelect={(id) => {handleNavigate(`/product/${id}`); setIsSearchOpen(false);}} currency={currency}/>
-            
-            {!isAdminMode && <StyleAdvisorButton onClick={() => { setAssistantContext('default'); setIsAssistantOpen(true); }} />}
-            
-            {isAdminMode && <AdminToolbar onAddProduct={openAddProductModal} onManageCategories={() => setIsCategoryModalOpen(true)} onExitAdminMode={() => setIsAdminMode(false)} onReloadProducts={loadProducts} generateImages={generateImagesOnLoad} onToggleGenerateImages={setGenerateImagesOnLoad} onNavigateToDashboard={handleNavigateToDashboard} supportedCurrencies={supportedCurrencies} currentCurrency={currency} onCurrencyChange={setCurrency} />}
-            
-            <ProductEditorModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} onDelete={handleDeleteProduct} product={editingProduct} categories={categories} />
-            <CategoryManagerModal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} categories={categories} setCategories={setCategories}/>
-            <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} view={authModalView} setView={setAuthModalView} onLogin={handleLogin} onSignup={handleSignup} />
-        </div>
+        <OnchainKitProvider
+            chain={base}
+            config={{
+                apiKey: import.meta.env.VITE_ONCHAINKIT_CLIENT_API_KEY,
+                appearance: {
+                    name: 'OLADIZZ',
+                    logo: '/images/onchainkit/favicon/48x48.png?v4-19-24',
+                },
+            }}
+        >
+            <div className="relative">
+                {activePath !== '/admin/dashboard' && <Header cartItemCount={cartItemCount} onCartClick={() => setIsCartOpen(true)} onNavigate={handleNavigate} currentUser={currentUser} onLogout={handleLogout} onAuthClick={handleAuthRequest} onSearchClick={() => setIsSearchOpen(true)} />}
+
+                <main>
+                    {renderPageContent()}
+                </main>
+
+                {activePath !== '/admin/dashboard' && <Footer onNavigate={handleNavigate} />}
+
+                <ShoppingCart isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cart} onUpdateQuantity={updateCartQuantity} onRemoveItem={removeFromCart} total={cartTotal} onCheckout={handleCheckout} currency={currency} />
+                <StyleAdvisor isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} context={assistantContext} products={products} categories={categories} currentUser={currentUser} onAddToCart={addToCart} onProductSelect={(id) => { handleNavigate(`/product/${id}`); setIsAssistantOpen(false); }} isAdmin={isAdminMode} onEnterAdminMode={() => setIsAdminMode(true)} onCreateProduct={handleCreateProductFromAI} onAuthRequest={(view) => { setIsAssistantOpen(false); handleAuthRequest(view); }} onCheckoutRequest={() => { setIsAssistantOpen(false); handleCheckout(); }} onCheckoutInfoUpdate={(info) => setCheckoutInfo(prev => ({ ...prev, shipping: info }))} orders={orders} />
+                <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} allProducts={products} onProductSelect={(id) => { handleNavigate(`/product/${id}`); setIsSearchOpen(false); }} currency={currency} />
+
+                {!isAdminMode && <StyleAdvisorButton onClick={() => { setAssistantContext('default'); setIsAssistantOpen(true); }} />}
+
+                {isAdminMode && <AdminToolbar onAddProduct={openAddProductModal} onManageCategories={() => setIsCategoryModalOpen(true)} onExitAdminMode={() => setIsAdminMode(false)} onReloadProducts={loadProducts} generateImages={generateImagesOnLoad} onToggleGenerateImages={setGenerateImagesOnLoad} onNavigateToDashboard={handleNavigateToDashboard} supportedCurrencies={supportedCurrencies} currentCurrency={currency} onCurrencyChange={setCurrency} />}
+
+                <ProductEditorModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} onDelete={handleDeleteProduct} product={editingProduct} categories={categories} />
+                <CategoryManagerModal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} categories={categories} setCategories={setCategories} />
+                <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} view={authModalView} setView={setAuthModalView} onLogin={handleLogin} onSignup={handleSignup} />
+            </div>
+        </OnchainKitProvider>
     );
 };
 
