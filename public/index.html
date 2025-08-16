@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My E-commerce Store</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f4f4f4; }
+        .product { border: 1px solid #ddd; padding: 20px; text-align: center; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; }
+        button { background-color: #0052ff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; transition: background-color 0.3s; }
+        button:disabled { background-color: #aaa; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <div class="product">
+        <h1>Sample Product</h1>
+        <p>A very fine product for a very fair price.</p>
+        <p><strong>Price: $1.00 USD</strong></p>
+        <button id="checkout-button">Buy Now with Crypto</button>
+        <p id="status-message"></p>
+    </div>
+
+    <script>
+        const checkoutButton = document.getElementById('checkout-button');
+        const statusMessage = document.getElementById('status-message');
+
+        checkoutButton.addEventListener('click', async () => {
+            checkoutButton.disabled = true;
+            statusMessage.textContent = 'Creating checkout...';
+
+            try {
+                const response = await fetch('/api/create-charge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    // For this example, the body is empty because the backend has fixed data.
+                    // In a real app, you'd send product ID, quantity, etc.
+                    // body: JSON.stringify({ productId: 'prod_123', quantity: 1 })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to create charge. Server responded with ' + response.status);
+                }
+
+                const data = await response.json();
+
+                if (data.hosted_url) {
+                    // Redirect the user to the Coinbase Commerce checkout page
+                    window.location.href = data.hosted_url;
+                } else {
+                    throw new Error('No hosted_url received from server.');
+                }
+
+            } catch (error) {
+                console.error('Checkout error:', error);
+                statusMessage.textContent = 'Error: ' + error.message;
+                checkoutButton.disabled = false;
+            }
+        });
+    </script>
+
+</body>
+</html>
