@@ -2,8 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Product } from '../types';
 
-// This function assumes process.env.API_KEY is set in the environment
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// This function assumes VITE_GEMINI_API_KEY is set in the environment
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const productSchema = (currencyCode: string) => ({
   type: Type.OBJECT,
