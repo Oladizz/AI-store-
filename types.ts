@@ -21,9 +21,10 @@ export interface CartItem extends Product {
 
 export interface User {
   id: string;
-  name: string;
   email: string;
-  createdAt: string; // ISO string
+  name?: string;
+  createdAt?: string; // ISO string
+  roles?: ('admin' | 'customer')[];
   // Note: Passwords are not stored in the frontend state for security.
 }
 

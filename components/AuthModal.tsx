@@ -8,8 +8,8 @@ interface AuthModalProps {
     onClose: () => void;
     view: AuthModalView;
     setView: (view: AuthModalView) => void;
-    onLogin: (email: string, password_do_not_use: string) => Promise<boolean>;
-    onSignup: (name: string, email: string, password_do_not_use: string) => Promise<boolean>;
+    onLogin: (email: string, password?: string) => Promise<boolean>;
+    onSignup: (name: string, email: string, password?: string) => Promise<boolean>;
 }
 
 const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, view, setView, onLogin, onSignup }) => {

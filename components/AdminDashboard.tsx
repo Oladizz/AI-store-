@@ -1,15 +1,14 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Chart, registerables } from 'chart.js/auto';
 import { Order, User, Currency } from '../types';
 import { UserGroupIcon, ShoppingBagIcon, BanknotesIcon } from './icons';
+import { getAllOrders, getAllUsers } from '../services/firestoreService';
 
 Chart.register(...registerables);
 
 interface AdminDashboardProps {
     onNavigate: (path: string, sectionId?: string) => void;
-    users: User[];
-    orders: Order[];
     currency: Currency;
 }
 
@@ -51,21 +50,38 @@ const processUserGrowthData = (users: User[]) => {
 };
 
 
-const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, users, orders, currency }) => {
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, currency }) => {
     const revenueChartRef = useRef<HTMLCanvasElement>(null);
     const userChartRef = useRef<HTMLCanvasElement>(null);
     const revenueChartInstance = useRef<Chart | null>(null);
     const userChartInstance = useRef<Chart | null>(null);
 
-    const filteredOrders = orders.filter(o => o.currency.code === currency.code);
-    const totalRevenue = filteredOrders.reduce((sum, order) => sum + order.total, 0);
-    const totalOrders = filteredOrders.length;
-    const totalUsers = users.length;
+    const [allOrders, setAllOrders] = useState<Order[]>([]);
+    const [allUsers, setAllUsers] = useState<User[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            const [orders, users] = await Promise.all([getAllOrders(), getAllUsers()]);
+            setAllOrders(orders);
+            setAllUsers(users);
+            setIsLoading(false);
+        };
+        fetchData();
+    }, []);
+
+    const filteredOrders = allOrders.filter(o => o.currency.code === currency.code);
+    const totalRevenue = filteredOrders.reduce((sum, order) => sum + order.total, 0);
+    const totalOrders = filteredOrders.length;
+    const totalUsers = allUsers.length;
+
+    useEffect(() => {
+        if (isLoading) return;
+
         if (revenueChartInstance.current) revenueChartInstance.current.destroy();
         if (revenueChartRef.current) {
-            const { labels, data } = processRevenueData(orders, currency);
+            const { labels, data } = processRevenueData(allOrders, currency);
             const ctx = revenueChartRef.current.getContext('2d');
             if (ctx) {
                 revenueChartInstance.current = new Chart(ctx, {
@@ -88,7 +104,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, users, orde
 
         if (userChartInstance.current) userChartInstance.current.destroy();
         if (userChartRef.current) {
-            const { labels, data } = processUserGrowthData(users);
+            const { labels, data } = processUserGrowthData(allUsers);
             const ctx = userChartRef.current.getContext('2d');
             if (ctx) {
                  userChartInstance.current = new Chart(ctx, {
@@ -113,7 +129,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, users, orde
             revenueChartInstance.current?.destroy();
             userChartInstance.current?.destroy();
         };
-    }, [orders, users, currency]);
+    }, [allOrders, allUsers, currency, isLoading]);
+
+    if (isLoading) {
+        return <div className="min-h-screen flex items-center justify-center">Loading dashboard data...</div>;
+    }
 
     return (
         <div className="bg-slate-100 min-h-screen">

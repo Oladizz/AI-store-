@@ -8,7 +8,7 @@ interface AdminToolbarProps {
     onAddProduct: () => void;
     onManageCategories: () => void;
     onExitAdminMode: () => void;
-    onReloadProducts: () => void;
+    onSeedDatabase: () => void;
     generateImages: boolean;
     onToggleGenerateImages: (enabled: boolean) => void;
     onNavigateToDashboard: () => void;
@@ -21,7 +21,7 @@ const AdminToolbar: React.FC<AdminToolbarProps> = ({
     onAddProduct, 
     onManageCategories, 
     onExitAdminMode, 
-    onReloadProducts, 
+    onSeedDatabase,
     generateImages, 
     onToggleGenerateImages,
     onNavigateToDashboard,
@@ -71,11 +71,11 @@ const AdminToolbar: React.FC<AdminToolbarProps> = ({
                         <span>Dashboard</span>
                     </button>
                     <button
-                        onClick={onReloadProducts}
+                        onClick={onSeedDatabase}
                         className="flex items-center space-x-2 px-3 py-2 text-sm font-semibold text-white bg-yellow-500/80 hover:bg-yellow-500 rounded-md transition-colors"
                     >
                         <ArrowPathIcon className="h-5 w-5" />
-                        <span>Reload All</span>
+                        <span>Seed Database</span>
                     </button>
                     <button
                         onClick={onAddProduct}

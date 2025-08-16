@@ -2,8 +2,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { OnchainKitProvider } from '@coinbase/onchainkit';
 import { base } from 'wagmi/chains';
+import { auth, db } from '../firebase';
+import { onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Product, CartItem, PageSection, PageContent, EditableProduct, User, CheckoutInfo, AuthModalView, Currency, Order } from './types';
-import { fetchProducts, generateSingleProduct, fetchForYouProductIds } from './services/geminiService';
+import { generateSingleProduct, fetchForYouProductIds } from './services/geminiService';
+import { getProducts, getCategories, seedDatabaseWithProducts, getOrdersForUser, saveOrder, getAllOrders, getPageContent, savePageContent, saveProduct, deleteProduct as deleteProductFromDB } from './services/firestoreService';
 import Header from './components/Header';
 import ShoppingCart from './components/ShoppingCart';
 import Footer from './Footer';
@@ -89,11 +93,11 @@ const supportedCurrencies: Currency[] = [
 
 const App: React.FC = () => {
     // Product & Content State
-    const [products, setProducts] = useLocalStorage<Product[]>('products', []);
+    const [products, setProducts] = useState<Product[]>([]);
     const [forYouProducts, setForYouProducts] = useLocalStorage<Product[]>('forYouProducts', []);
-    const [pageContent, setPageContent] = useLocalStorage<PageContent>('pageContent', initialPageContent);
-    const [pageLayout, setPageLayout] = useLocalStorage<PageSection[]>('pageLayout', initialLayout);
-    const [categories, setCategories] = useLocalStorage<string[]>('categories', ["Electronics", "Apparel", "Home Goods", "Books", "Beauty"]);
+    const [pageContent, setPageContent] = useState<PageContent>(initialPageContent);
+    const [pageLayout, setPageLayout] = useState<PageSection[]>(initialLayout);
+    const [categories, setCategories] = useState<string[]>([]);
     const [currency, setCurrency] = useLocalStorage<Currency>('currency', supportedCurrencies[0]);
     
     // UI & App State
@@ -118,15 +122,39 @@ const App: React.FC = () => {
     const [generateImagesOnLoad, setGenerateImagesOnLoad] = useLocalStorage<boolean>('generateImagesOnLoad', false);
     
     // Auth & Analytics State
-    const [users, setUsers] = useLocalStorage<User[]>('users', []);
-    const [currentUser, setCurrentUser] = useLocalStorage<User | null>('currentUser', null);
-    const [orders, setOrders] = useLocalStorage<Order[]>('orders', []);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [orders, setOrders] = useState<Order[]>([]);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [authModalView, setAuthModalView] = useState<AuthModalView>('login');
 
     // Checkout State
     const [checkoutInfo, setCheckoutInfo] = useState<CheckoutInfo>(initialCheckoutInfo);
     const [coinbaseChargeId, setCoinbaseChargeId] = useState<string | null>(null);
+
+    // Auth state listener
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const userDocRef = doc(db, "users", user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    const userData = { id: user.uid, ...userDocSnap.data() } as User;
+                    setCurrentUser(userData);
+                    // Fetch orders for the logged-in user
+                    const userOrders = await getOrdersForUser(user.uid);
+                    setOrders(userOrders);
+                } else {
+                    console.log("User document not found in Firestore, but user is authenticated.");
+                    setCurrentUser({ id: user.uid, email: user.email! });
+                    setOrders([]);
+                }
+            } else {
+                setCurrentUser(null);
+                setOrders([]); // Clear orders on logout
+            }
+        });
+        return () => unsubscribe();
+    }, []);
 
     // Routing Effect
     useEffect(() => {
@@ -164,29 +192,50 @@ const App: React.FC = () => {
     }, [scrollToSection, activePath, sortedLayout]);
 
     // Data Loading
-    const loadProducts = useCallback(async () => {
+    const loadInitialData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
-            const fetchedProducts = await fetchProducts(generateImagesOnLoad, categories, currency.code);
+            const [fetchedProducts, fetchedCategories, content] = await Promise.all([
+                getProducts(),
+                getCategories(),
+                getPageContent()
+            ]);
+
             setProducts(fetchedProducts);
+            setCategories(fetchedCategories);
+
+            if (content) {
+                setPageContent(content.pageContent);
+                setPageLayout(content.pageLayout);
+            } else {
+                // If no content in DB, initialize it with defaults
+                await savePageContent(initialPageContent, initialLayout);
+            }
+
+            if (fetchedProducts.length === 0) {
+                setError("Your database is empty. Please ask an admin to seed the database.");
+            }
+
             setForYouProducts([]); // Reset recommendations on reload
         } catch (err) {
-            setError('Failed to fetch products. Please try again later.');
+            setError('Failed to fetch initial data from Firestore. Please check your connection and Firebase setup.');
             console.error(err);
         } finally {
             setIsLoading(false);
         }
-    }, [categories, generateImagesOnLoad, currency.code, setProducts, setForYouProducts]);
+    }, []);
 
     useEffect(() => {
-        if (products.length === 0 && !isLoading) loadProducts();
-    }, [loadProducts, products.length, isLoading]);
-    
-    useEffect(() => {
-        setIsLoading(true);
-        loadProducts();
-    }, [currency.code, loadProducts]);
+        loadInitialData();
+    }, [loadInitialData]);
+
+    const handleSeedDatabase = async () => {
+        const defaultCategories = ["Electronics", "Apparel", "Home Goods", "Books", "Beauty"];
+        await seedDatabaseWithProducts(defaultCategories, currency.code);
+        // Reload data after seeding
+        await loadInitialData();
+    };
 
 
     useEffect(() => {
@@ -249,59 +298,98 @@ const App: React.FC = () => {
     };
 
     const handleSaveProduct = async (productData: EditableProduct) => {
-        if (productData.id) { 
-            setProducts(prev => prev.map(p => {
-                if (p.id === productData.id) {
-                    const newImageUrl = productData.imageUrl || p.imageUrl;
-                    return { ...p, ...productData, imageUrl: newImageUrl };
-                }
-                return p;
-            }));
-
-        } else { 
-            const newProduct = await generateSingleProduct("A product based on user input", categories, currency.code);
-            setProducts(prev => [{ ...newProduct, ...productData }, ...prev]);
+        setIsLoading(true);
+        try {
+            if (!productData.id) {
+                // It's a new product, let's generate the AI content first
+                const newProductContent = await generateSingleProduct("A product based on user input", categories, currency.code);
+                // Merge generated content with admin's input, admin input takes precedence
+                const finalProductData = { ...newProductContent, ...productData };
+                await saveProduct(finalProductData);
+            } else {
+                await saveProduct(productData);
+            }
+            await loadInitialData(); // Reload all products from DB
+        } catch (error) {
+            console.error("Error saving product:", error);
+            setError("Failed to save product.");
+        } finally {
+            setIsLoading(false);
+            setIsProductModalOpen(false);
         }
-        setIsProductModalOpen(false);
     };
 
-    const handleDeleteProduct = (productId: string) => {
-        setProducts(prev => prev.filter(p => p.id !== productId));
+    const handleDeleteProduct = async (productId: string) => {
+        setIsLoading(true);
+        try {
+            await deleteProductFromDB(productId);
+            await loadInitialData(); // Reload all products from DB
+        } catch (error) {
+            console.error("Error deleting product:", error);
+            setError("Failed to delete product.");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handlePageContentChange = (section: keyof PageContent, field: string, value: any) => {
-        setPageContent(prev => ({ ...prev, [section]: { ...(prev as any)[section], [field]: value } }));
+        const newContent = { ...pageContent, [section]: { ...(pageContent as any)[section], [field]: value } };
+        setPageContent(newContent);
+        savePageContent(newContent, pageLayout);
     };
     const handleSectionContentChange = (sectionId: string, field: 'title' | 'description', value: string) => {
-        setPageLayout(prev => prev.map(s => s.id === sectionId ? { ...s, content: { ...s.content, [field]: value } } : s));
+        const newLayout = pageLayout.map(s => s.id === sectionId ? { ...s, content: { ...s.content, [field]: value } } : s);
+        setPageLayout(newLayout);
+        savePageContent(pageContent, newLayout);
     };
     const handleSectionOrderChange = (sectionId: string, order: number) => {
-        setPageLayout(prev => prev.map(s => s.id === sectionId ? { ...s, order } : s));
+        const newLayout = pageLayout.map(s => s.id === sectionId ? { ...s, order } : s);
+        setPageLayout(newLayout);
+        savePageContent(pageContent, newLayout);
     };
 
     // Auth Handlers
-    const handleLogin = async (email: string): Promise<boolean> => {
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        if (user) {
-            setCurrentUser(user);
+    const handleLogin = async (email: string, password?: string): Promise<boolean> => {
+        if (!password) return false;
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
             setIsAuthModalOpen(false);
             return true;
+        } catch (error) {
+            console.error("Error signing in:", error);
+            return false;
         }
-        return false;
     };
 
-    const handleSignup = async (name: string, email: string): Promise<boolean> => {
-        if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) return false;
-        const newUser: User = { id: `user-${Date.now()}`, name, email: email.toLowerCase(), createdAt: new Date().toISOString() };
-        setUsers(prev => [...prev, newUser]);
-        setCurrentUser(newUser);
-        setIsAuthModalOpen(false);
-        return true;
+    const handleSignup = async (name: string, email: string, password?: string): Promise<boolean> => {
+        if (!password) return false;
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // Create a user document in Firestore
+            await setDoc(doc(db, "users", user.uid), {
+                name: name,
+                email: email,
+                createdAt: new Date().toISOString(),
+                roles: ['customer'] // Default role
+            });
+
+            setIsAuthModalOpen(false);
+            return true;
+        } catch (error) {
+            console.error("Error signing up:", error);
+            return false;
+        }
     };
 
-    const handleLogout = () => {
-        setCurrentUser(null);
-        if (activePath === '/checkout' || activePath === '/admin/dashboard') handleNavigate('/');
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            if (activePath === '/checkout' || activePath === '/admin/dashboard') handleNavigate('/');
+        } catch (error) {
+            console.error("Error signing out:", error);
+        }
     };
 
     const handleAuthRequest = (view: AuthModalView) => {
@@ -315,12 +403,12 @@ const App: React.FC = () => {
         else { handleNavigate('/checkout'); setIsCartOpen(false); }
     };
 
-    const handlePlaceOrder = () => {
+    const handlePlaceOrder = async () => {
         if (!currentUser) return;
-        const newOrder: Order = {
-            id: `order-${Date.now()}`,
+
+        const newOrderData: Omit<Order, 'id'> = {
             userId: currentUser.id,
-            userName: checkoutInfo.shipping.fullName || currentUser.name,
+            userName: checkoutInfo.shipping.fullName || currentUser.name || 'N/A',
             items: cart,
             total: cartTotal + 5.99,
             currency: currency,
@@ -330,12 +418,21 @@ const App: React.FC = () => {
             trackingNumber: `1Z${Date.now().toString().slice(-10)}`,
             coinbaseChargeId: coinbaseChargeId,
         };
-        setOrders(prev => [...prev, newOrder]);
-        setCart([]);
-        setCheckoutInfo(initialCheckoutInfo);
-        setCoinbaseChargeId(null);
-        alert('Thank you for your order!');
-        handleNavigate('/');
+
+        try {
+            await saveOrder(newOrderData);
+            setCart([]);
+            setCheckoutInfo(initialCheckoutInfo);
+            setCoinbaseChargeId(null);
+            alert('Thank you for your order!');
+            // Fetch updated orders list
+            const userOrders = await getOrdersForUser(currentUser.id);
+            setOrders(userOrders);
+            handleNavigate('/');
+        } catch (error) {
+            console.error("Error placing order:", error);
+            alert("There was an error placing your order. Please try again.");
+        }
     };
 
     const handleCreateProductFromAI = async (prompt: string): Promise<Product | null> => {
@@ -390,7 +487,7 @@ const App: React.FC = () => {
                 handleNavigate('/'); 
                 return null;
             }
-            return <AdminDashboard onNavigate={handleNavigate} users={users} orders={orders} currency={currency} />;
+            return <AdminDashboard onNavigate={handleNavigate} users={[]} allOrders={orders} currency={currency} />;
         }
         if (activeProduct) {
             return <ProductPage product={activeProduct} onAddToCart={addToCart} onBack={() => handleNavigate('/')} currency={currency} allProducts={products} onProductSelect={(id) => handleNavigate(`/product/${id}`)} />;
@@ -424,7 +521,7 @@ const App: React.FC = () => {
 
                 {!isAdminMode && <StyleAdvisorButton onClick={() => { setAssistantContext('default'); setIsAssistantOpen(true); }} />}
 
-                {isAdminMode && <AdminToolbar onAddProduct={openAddProductModal} onManageCategories={() => setIsCategoryModalOpen(true)} onExitAdminMode={() => setIsAdminMode(false)} onReloadProducts={loadProducts} generateImages={generateImagesOnLoad} onToggleGenerateImages={setGenerateImagesOnLoad} onNavigateToDashboard={handleNavigateToDashboard} supportedCurrencies={supportedCurrencies} currentCurrency={currency} onCurrencyChange={setCurrency} />}
+                {isAdminMode && <AdminToolbar onAddProduct={openAddProductModal} onManageCategories={() => setIsCategoryModalOpen(true)} onExitAdminMode={() => setIsAdminMode(false)} onSeedDatabase={handleSeedDatabase} generateImages={generateImagesOnLoad} onToggleGenerateImages={setGenerateImagesOnLoad} onNavigateToDashboard={handleNavigateToDashboard} supportedCurrencies={supportedCurrencies} currentCurrency={currency} onCurrencyChange={setCurrency} />}
 
                 <ProductEditorModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} onDelete={handleDeleteProduct} product={editingProduct} categories={categories} />
                 <CategoryManagerModal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} categories={categories} setCategories={setCategories} />
